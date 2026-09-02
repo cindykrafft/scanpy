@@ -276,8 +276,11 @@ def _score_genes_bins(
     # Sometimes (and I don’t know how) missing data may be there, with NaNs for missing entries
     obs_avg = obs_avg[np.isfinite(obs_avg)]
 
-    n_items = int(np.round(len(obs_avg) / (n_bins - 1)))
-    obs_cut = obs_avg.rank(method="min") // n_items
+    # `n_bins` equal-frequency bins (as Seurat's `cut_number`): ranks 0..N-1 mapped
+    # onto 0..n_bins-1. The previous `rank // round(N / (n_bins - 1))` left the top
+    # bin with between one and a dozen genes, or no top bin at all.
+    obs_cut = (obs_avg.rank(method="first") - 1) * n_bins // len(obs_avg)
+    obs_cut = obs_cut.astype(int)
     keep_ctrl_in_obs_cut = np.False_ if ctrl_as_ref else obs_cut.index.isin(gene_list)
 
     # now pick `ctrl_size` genes from every cut

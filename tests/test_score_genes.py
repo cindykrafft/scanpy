@@ -287,6 +287,44 @@ def test_gene_list_is_control(*, ctrl_as_ref: bool):
         if ctrl_as_ref
         else nullcontext()
     ):
+        # g3 shares its expression bin with one other gene; with ctrl_as_ref=True the
+        # single control drawn from that bin must be g3 itself for the error to occur,
+        # which this seed guarantees.
         sc.tl.score_genes(
-            adata, gene_list="g3", ctrl_size=1, n_bins=5, ctrl_as_ref=ctrl_as_ref
+            adata, gene_list="g3", ctrl_size=1, n_bins=5, ctrl_as_ref=ctrl_as_ref, rng=1
         )
+
+
+@pytest.mark.parametrize("n_vars", [2000, 18000, 25000])
+def test_bins_are_equal_frequency(n_vars: int):
+    """Every expression bin holds n_vars / n_bins genes, including the top one.
+
+    Regression test: the bin boundaries used to be ``rank // round(n / (n_bins - 1))``,
+    which left the highest-expression bin with 1-12 genes (or removed it), so lists of
+    the most highly expressed genes had almost no control genes.
+    """
+    from scanpy.tools._score_genes import _score_genes_bins
+
+    n_bins, ctrl_size = 25, 50
+    rng = np.random.default_rng(0)
+    adata = AnnData(rng.lognormal(0, 1, (10, n_vars)).astype(np.float32))
+    adata.var_names = [f"g{i}" for i in range(n_vars)]
+    avg = np.asarray(adata.X.mean(axis=0)).ravel()
+    top_genes = adata.var_names[np.argsort(avg)[-5:]]
+    controls = list(
+        _score_genes_bins(
+            top_genes,
+            adata.var_names.astype("string"),
+            ctrl_as_ref=False,
+            ctrl_size=ctrl_size,
+            n_bins=n_bins,
+            get_subset=lambda genes: adata[:, genes].X,
+            rng=rng,
+        )
+    )
+    # the five top genes share one bin, which supplies a full set of controls
+    assert len(controls) == 1
+    assert len(controls[0]) == ctrl_size
+    # and scoring them works instead of raising "No control genes found"
+    sc.tl.score_genes(adata, top_genes, ctrl_size=ctrl_size, n_bins=n_bins, rng=0)
+    assert np.isfinite(adata.obs["score"]).all()

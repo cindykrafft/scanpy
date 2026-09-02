@@ -1,0 +1,1 @@
+Fix {func}`scanpy.tl.score_genes` (and {func}`scanpy.tl.score_genes_cell_cycle`) building `n_bins` equal-frequency expression bins for the control genes; previously the highest-expression bin held only a handful of genes, so gene lists containing the most highly expressed genes got almost no matched controls or failed with `No control genes found` {smaller}`C Krafft`
