@@ -1,0 +1,1 @@
+Fix {func}`~scanpy.pp.scrublet` scoring each cell over one neighbor fewer than the `k_adj` it computes (the cell itself was counted, or dropped without replacement), which lowered every observed cell's doublet score relative to the original Scrublet; doublet scores and the automatic threshold change slightly {smaller}`C Krafft`

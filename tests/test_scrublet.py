@@ -63,6 +63,50 @@ def test_scrublet(
     )
 
 
+@pytest.mark.parametrize("coincident", [False, True], ids=["distinct", "coincident"])
+@pytest.mark.parametrize("use_approx_neighbors", [False, None])
+def test_scrublet_knn_uses_k_adj_neighbors(
+    *, coincident: bool, use_approx_neighbors: bool | None
+) -> None:
+    """The score must be over the k_adj nearest *other* cells, as in Scrublet.
+
+    Before the fix, `Neighbors` counted the cell itself and the classifier
+    scored k_adj - 1 real neighbors (plus the cell itself, or nothing when the
+    manifold contained coincident points) while still dividing by k_adj.
+    """
+    from sklearn.neighbors import NearestNeighbors
+
+    from scanpy.preprocessing._scrublet.core import Scrublet
+
+    rng = np.random.default_rng(0)
+    n_obs, n_sim, k = 150, 300, 6
+    manifold_obs = rng.normal(size=(n_obs, 5))
+    manifold_sim = rng.normal(size=(n_sim, 5)) + 0.5
+    if coincident:  # e.g. the same parent pair drawn twice
+        manifold_sim[1] = manifold_sim[0]
+    scrub = Scrublet(
+        counts_obs=np.ones((n_obs, 2)),
+        n_neighbors=k,
+        expected_doublet_rate=0.1,
+        stdev_doublet_rate=0.02,
+        rng=0,
+    )
+    scrub.set_manifold(manifold_obs, manifold_sim)
+    scrub.calculate_doublet_scores(use_approx_neighbors=use_approx_neighbors)
+
+    manifold = np.vstack([manifold_obs, manifold_sim])
+    labels = np.r_[np.zeros(n_obs), np.ones(n_sim)]
+    k_adj = round(k * (1 + n_sim / n_obs))
+    nn = NearestNeighbors(n_neighbors=k_adj).fit(manifold)
+    n_sim_neigh = labels[nn.kneighbors(return_distance=False)].sum(axis=1)
+    rho, r = 0.1, n_sim / n_obs
+    q = (n_sim_neigh + 1) / (k_adj + 2)
+    expected = q * rho / r / (1 - rho - q * (1 - rho - rho / r))
+    assert_allclose(
+        np.r_[scrub.doublet_scores_obs_, scrub.doublet_scores_sim_], expected
+    )
+
+
 def test_scrublet_batched():
     """Test that Scrublet run works with batched data."""
     adata = pbmc200()

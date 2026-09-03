@@ -338,22 +338,30 @@ class Scrublet:
         # Adjust k (number of nearest neighbors) based on the ratio of simulated to observed cells
         k_adj = round(k * (1 + n_sim / float(n_obs)))
 
-        # Find k_adj nearest neighbors
+        # Find the k_adj nearest *other* cells. `Neighbors` counts a cell as its own
+        # first neighbor, so ask for one more and drop that column below.
         knn = Neighbors(manifold)
         transformer = None
         if use_approx_neighbors is not None:
             transformer = "pynndescent" if use_approx_neighbors else "sklearn"
         knn.compute_neighbors(
-            k_adj,
+            k_adj + 1,
             metric=distance_metric,
             knn=True,
             transformer=transformer,
             method=None,
             rng=self._rng,
         )
-        neighbors, _ = _get_indices_distances_from_sparse_matrix(knn.distances, k_adj)
-        if use_approx_neighbors:
+        neighbors, _ = _get_indices_distances_from_sparse_matrix(
+            knn.distances, k_adj + 1
+        )
+        if neighbors.shape[1] == k_adj + 1:
+            # the self column `_get_indices_distances_from_sparse_matrix` prepends
+            # (it is not prepended when coincident cells make it keep another cell there)
             neighbors = neighbors[:, 1:]
+        if neighbors.shape[1] != k_adj:  # pragma: no cover
+            msg = f"Expected {k_adj} neighbors per cell, got {neighbors.shape[1]}."
+            raise RuntimeError(msg)
         # Calculate doublet score based on ratio of simulated cell neighbors vs. observed cell neighbors
         doub_neigh_mask: NDArray[np.bool] = (
             manifold.obs["doub_labels"].to_numpy()[neighbors] == "sim"
