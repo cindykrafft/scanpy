@@ -217,14 +217,17 @@ def scrublet(  # noqa: PLR0913
                 rng=rng,
             )
             del ad_obs.layers["raw"]
-            if log_transform:
-                pp.log1p(ad_obs)
-                pp.log1p(ad_sim)
 
-            # Now normalise simulated and observed in the same way
+            # Now normalise simulated and observed in the same way, and only then
+            # log-transform both: `ad_obs` is median-normalised here while `ad_sim`
+            # holds raw summed counts, so a log taken before this step would put the
+            # two populations on different scales.
 
             pp.normalize_total(ad_obs, target_sum=1e6)
             pp.normalize_total(ad_sim, target_sum=1e6)
+            if log_transform:
+                pp.log1p(ad_obs)
+                pp.log1p(ad_sim)
 
         ad_obs = _scrublet_call_doublets(
             adata_obs=ad_obs,

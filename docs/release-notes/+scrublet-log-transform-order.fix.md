@@ -1,0 +1,1 @@
+Fix {func}`~scanpy.pp.scrublet` with `log_transform=True` log-transforming the observed cells (median-normalised) and the simulated doublets (raw counts) on different scales and before the common per-cell normalisation; both are now normalised to 1e6 counts and then log-transformed, as in Scrublet {smaller}`C Krafft`
