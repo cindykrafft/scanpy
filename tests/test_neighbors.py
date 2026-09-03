@@ -176,21 +176,21 @@ def test_distances_euclidean(
 
 
 @pytest.mark.parametrize(
-    ("transformer", "knn"),
+    ("transformer", "knn", "expected"),
     [
         # knn=False trivially returns all distances
-        pytest.param(None, False, id="knn=False"),
-        # pynndescent returns all distances when data is so small
-        pytest.param("pynndescent", True, id="pynndescent"),
-        # Explicit brute force also returns all distances
+        pytest.param(None, False, distances_euclidean_all, id="knn=False"),
+        # knn=True keeps n_neighbors - 1 neighbors, even if the transformer returns more
+        pytest.param("pynndescent", True, distances_euclidean, id="pynndescent"),
         pytest.param(
             KNeighborsTransformer(n_neighbors=n_neighbors, algorithm="brute"),
             True,
+            distances_euclidean,
             id="sklearn",
         ),
     ],
 )
-def test_distances_all(neigh: Neighbors, transformer, knn):
+def test_distances_all(neigh: Neighbors, transformer, knn, expected):
     neigh.compute_neighbors(
         n_neighbors, transformer=transformer, method="gauss", knn=knn
     )
@@ -199,7 +199,7 @@ def test_distances_all(neigh: Neighbors, transformer, knn):
         if isinstance(neigh.distances, CSBase)
         else neigh.distances
     )
-    np.testing.assert_allclose(dists, distances_euclidean_all)
+    np.testing.assert_allclose(dists, expected)
 
 
 @pytest.mark.parametrize(
@@ -380,6 +380,31 @@ def test_restore_n_neighbors(neigh, conv):
     ad.uns["neighbors"] = dict(connectivities=conv(neigh.connectivities))
     neigh_restored = Neighbors(ad)
     assert neigh_restored.n_neighbors == 1
+
+
+@pytest.mark.parametrize(
+    "transformer",
+    [
+        pytest.param("pynndescent", id="pynndescent"),
+        pytest.param(
+            KNeighborsTransformer(n_neighbors=5, algorithm="brute"), id="sklearn"
+        ),
+    ],
+)
+def test_distances_n_neighbors(transformer) -> None:
+    """`.distances` has `n_neighbors - 1` entries per row and matches `.connectivities`.
+
+    Transformers can return more neighbors than that (e.g. `PyNNDescentTransformer`
+    returns `n_neighbors` neighbors plus the cell itself). See scverse/scanpy#3809.
+    """
+    n_neighbors = 5
+    adata = AnnData(np.random.default_rng(0).standard_normal((200, 10)))
+    sc.pp.neighbors(adata, n_neighbors=n_neighbors, transformer=transformer)
+    dists, conns = adata.obsp["distances"], adata.obsp["connectivities"]
+    np.testing.assert_array_equal(np.diff(dists.indptr), n_neighbors - 1)
+    np.testing.assert_array_equal(dists.getnnz(axis=1), n_neighbors - 1)
+    # every neighbor in `.distances` is an edge in `.connectivities`
+    assert (dists.astype(bool) > conns.astype(bool)).nnz == 0
 
 
 def test_neighbors_distance_equivalence() -> None:

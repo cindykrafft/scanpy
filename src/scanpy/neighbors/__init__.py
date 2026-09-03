@@ -600,12 +600,17 @@ class Neighbors:
         if shortcut:
             # self._distances is a sparse matrix with a diag of 1, fix that
             self._distances[np.diag_indices_from(self.distances)] = 0
-            if knn:  # remove too far away entries in self._distances
-                self._distances = _get_sparse_matrix_from_indices_distances(
-                    knn_indices, knn_distances, keep_self=False
-                )
-            else:  # convert to dense
+            if not knn:  # convert to dense
                 self._distances = self._distances.toarray()
+        if knn:
+            # Restrict `self._distances` to the `n_neighbors - 1` nearest neighbors
+            # used for the connectivities. Transformers can return more entries per row,
+            # e.g. `PyNNDescentTransformer` returns `n_neighbors` neighbors plus the cell
+            # itself, which would leave one neighbor more in `.distances` than in
+            # `.connectivities`.
+            self._distances = _get_sparse_matrix_from_indices_distances(
+                knn_indices, knn_distances, keep_self=False
+            )
         if index := getattr(transformer, "index_", None):
             from pynndescent import NNDescent
 
